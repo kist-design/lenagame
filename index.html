@@ -1,0 +1,467 @@
+```html
+<!doctype html>
+<html lang="de">
+<head>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0b0b">
+<link rel="icon" href="assets/ui/icon-192.png">
+<link rel="apple-touch-icon" href="assets/ui/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Kopf streicheln – Mini-Game</title>
+  <style>
+    :root{
+      /* Hände-Overlay Position/Skalierung (einfach anpassen) */
+      --hands-x: 50%;
+      --hands-y: 28%;
+      --hands-scale: 1.0;
+
+      /* Layout */
+      --hud-pad: 12px;
+      --btn-bottom: 18px;
+      --btn-min-w: 220px;
+      --btn-h: 64px;
+
+      /* Farben */
+      --hud-bg: rgba(0,0,0,.45);
+      --hud-fg: #fff;
+      --err-bg: rgba(160,0,0,.70);
+      --err-fg: #fff;
+    }
+
+    *{ box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: #0b0b0b;
+      color: #fff;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* Vollbild-Spielfläche */
+    #game{
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      /* Hintergrund per CSS */
+      background-size: #game{
+  background-size: 70%;
+}
+
+      background-position: center;
+      background-repeat: no-repeat;
+      background-color: #111;
+    }
+
+    /* HUD */
+    #hud{
+      position: absolute;
+      top: var(--hud-pad);
+      left: var(--hud-pad);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: var(--hud-bg);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      box-shadow: 0 8px 20px rgba(0,0,0,.25);
+      pointer-events: none;
+    }
+    #score{
+      font-weight: 700;
+      letter-spacing: .2px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    /* Fehler-Stack (oben rechts) */
+    #errors{
+      position: absolute;
+      top: var(--hud-pad);
+      right: var(--hud-pad);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: min(520px, calc(100vw - 2*var(--hud-pad)));
+      pointer-events: none;
+    }
+    .error-pill{
+      background: var(--err-bg);
+      color: var(--err-fg);
+      padding: 8px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      line-height: 1.25;
+      box-shadow: 0 10px 22px rgba(0,0,0,.25);
+      word-break: break-word;
+    }
+
+    /* Hände Overlay */
+    #hands{
+      position: absolute;
+      left: var(--hands-x);
+      top: var(--hands-y);
+      transform: translate(-50%, -50%) scale(var(--hands-scale));
+      transform-origin: center;
+      width: min(520px, 85vw);
+      height: auto;
+      opacity: 0;
+      pointer-events: none;
+      filter: drop-shadow(0 10px 18px rgba(0,0,0,.35));
+      will-change: transform, opacity;
+    }
+
+    /* Sichtbar nur bei aktivem Massieren */
+    #game.state-happy.active #hands{
+      opacity: 1;
+      animation: pet 0.6s ease-in-out infinite;
+    }
+    /* Happy, aber nicht aktiv => Hände aus */
+    #game.state-happy:not(.active) #hands{
+      opacity: 0;
+      animation: none;
+    }
+    /* Angry => Hände aus */
+    #game.state-angry #hands{
+      opacity: 0;
+      animation: none;
+    }
+
+    /* Dezente Animation */
+    @keyframes pet{
+      0%   { transform: translate(-50%, -50%) scale(var(--hands-scale)) rotate(-1deg) translateY(0px); }
+      50%  { transform: translate(-50%, -50%) scale(var(--hands-scale)) rotate(1deg) translateY(3px); }
+      100% { transform: translate(-50%, -50%) scale(var(--hands-scale)) rotate(-1deg) translateY(0px); }
+    }
+
+    /* Button unten mittig */
+    #massageBtn{
+      position: absolute;
+      left: 50%;
+      bottom: max(var(--btn-bottom), env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      min-width: var(--btn-min-w);
+      height: var(--btn-h);
+      padding: 0 18px;
+      border: 0;
+      border-radius: 18px;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: .2px;
+      cursor: pointer;
+
+      color: #1a1a1a;
+      background: rgba(255,255,255,.92);
+      box-shadow:
+        0 16px 30px rgba(0,0,0,.35),
+        0 2px 0 rgba(255,255,255,.6) inset;
+      touch-action: manipulation;
+    }
+    #massageBtn:active{
+      transform: translateX(-50%) scale(0.985);
+    }
+    #massageBtn:focus-visible{
+      outline: 3px solid rgba(255,255,255,.75);
+      outline-offset: 4px;
+    }
+
+    /* Optional: Button-Bild als Hintergrund (wenn verfügbar) */
+    #massageBtn.has-img{
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      color: transparent; /* Text bleibt als Fallback im DOM, wird visuell versteckt */
+      text-shadow: none;
+    }
+    /* Fallback-Text für Screenreader bleibt */
+    #massageBtn .btn-label{
+      position: relative;
+      z-index: 1;
+    }
+    #massageBtn.has-img .btn-label{
+      opacity: 0;
+    }
+
+    /* Kleine Hilfe: Klick-Hinweis bei Desktop */
+    @media (hover:hover) and (pointer:fine){
+      #massageBtn::after{
+        content: " (schnell klicken)";
+        font-weight: 600;
+        font-size: 12px;
+        opacity: .75;
+      }
+      #massageBtn.has-img::after{
+        content: "";
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="game" class="state-angry">
+    <div id="hud" aria-live="polite">
+      <div id="score">Score: 0.0 s</div>
+    </div>
+
+    <div id="errors" aria-live="polite" aria-relevant="additions"></div>
+
+    <img id="hands" alt="" />
+
+    <button id="massageBtn" type="button">
+      <span class="btn-label">Massieren</span>
+    </button>
+  </div>
+
+  <script>
+    "use strict";
+
+    // === Asset-Konfiguration (nur hier Pfade ändern) ===
+    const ASSETS = {
+      bgAngry: "assets/background/bg_angry.png",
+      bgHappy: "assets/background/bg_happy.png",
+      hands: "assets/hands/hands.png",
+      buttonImg: "assets/ui/button.png" // optional; leer lassen ("") falls nicht genutzt
+    };
+
+    // === Timing-Regeln ===
+    const ACTIVE_WINDOW_MS = 250;   // Massage aktiv, wenn letzter Klick <= 250ms her ist
+    const ANGRY_DELAY_MS   = 2000;  // Nach 2s ohne Massage => böse + Score reset
+
+    // === DOM ===
+    const elGame = document.getElementById("game");
+    const elHands = document.getElementById("hands");
+    const elBtn = document.getElementById("massageBtn");
+    const elScore = document.getElementById("score");
+    const elErrors = document.getElementById("errors");
+
+    // === State ===
+    let lastMassageTime = -Infinity;   // ms (performance.now)
+    let scoreSeconds = 0;              // float
+    let wasActive = false;
+    let state = "angry";               // "angry" | "happy"
+    let rafId = 0;
+    let lastFrameTime = 0;
+
+    // Asset-Ladezustände
+    const loaded = {
+      bgAngry: false,
+      bgHappy: false,
+      hands: false,
+      buttonImg: false
+    };
+
+    // Fehler-Tracking, damit nicht gespammt wird
+    const errorShown = new Set();
+
+    function showAssetError(label, path) {
+      const key = label + "::" + path;
+      if (errorShown.has(key)) return;
+      errorShown.add(key);
+
+      const pill = document.createElement("div");
+      pill.className = "error-pill";
+      pill.textContent = `Asset fehlt: ${label} → ${path}`;
+      elErrors.appendChild(pill);
+
+      // Nach einer Weile ausblenden (nicht zwingend, aber aufgeräumt)
+      setTimeout(() => {
+        pill.style.transition = "opacity 250ms ease";
+        pill.style.opacity = "0";
+        setTimeout(() => pill.remove(), 350);
+      }, 8000);
+    }
+
+    function preloadImage(label, path) {
+      return new Promise((resolve) => {
+        if (!path) { resolve({ ok: false, label, path }); return; }
+
+        const img = new Image();
+        img.onload = () => resolve({ ok: true, label, path, img });
+        img.onerror = () => resolve({ ok: false, label, path });
+        img.src = path;
+      });
+    }
+
+    function applyBackground(path) {
+      if (path) elGame.style.backgroundImage = `url("${path}")`;
+      else elGame.style.backgroundImage = "none";
+    }
+
+    function setState(nextState, { active } = { active: false }) {
+      state = nextState;
+
+      elGame.classList.toggle("state-angry", state === "angry");
+      elGame.classList.toggle("state-happy", state === "happy");
+      elGame.classList.toggle("active", !!active);
+
+      if (state === "angry") {
+        applyBackground(ASSETS.bgAngry);
+      } else {
+        applyBackground(ASSETS.bgHappy);
+      }
+    }
+
+    function resetScore() {
+      scoreSeconds = 0;
+      renderScore();
+    }
+
+    function renderScore() {
+      elScore.textContent = `Score: ${scoreSeconds.toFixed(1)} s`;
+    }
+
+    function isMassageActive(now) {
+      return (now - lastMassageTime) <= ACTIVE_WINDOW_MS;
+    }
+
+    function timeSinceLastMassage(now) {
+      return now - lastMassageTime;
+    }
+
+    function onMassageImpulse() {
+      lastMassageTime = performance.now();
+
+      // Wenn gerade böse war oder Score bereits auf 0 soll neu starten: nur bei Übergang von nicht-aktiv zu aktiv
+      // => handled in updateLoop via wasActive
+    }
+
+    function updateLoop(now) {
+      if (!lastFrameTime) lastFrameTime = now;
+      const dt = (now - lastFrameTime) / 1000;
+      lastFrameTime = now;
+
+      const active = isMassageActive(now);
+      const since = timeSinceLastMassage(now);
+
+      // Zustandsmaschine gemäß Spezifikation
+      if (active) {
+  // if (!wasActive) {
+  //   scoreSeconds = 0;
+  //   renderScore();
+  // }
+
+  if (state !== "happy") setState("happy", { active: true });
+  else setState("happy", { active: true });
+
+  scoreSeconds += dt;
+  renderScore();
+}       
+        else {
+        // Nicht aktiv: Hände aus
+        if (since < ANGRY_DELAY_MS) {
+          // <2s seit letztem Impuls: bleibt happy, Score pausiert
+          if (state !== "happy") setState("happy", { active: false });
+          else setState("happy", { active: false });
+        } else {
+          // >=2s ohne Massage: böse, Score reset sofort
+          if (state !== "angry") {
+            setState("angry", { active: false });
+          } else {
+            setState("angry", { active: false });
+          }
+          if (scoreSeconds !== 0) resetScore();
+        }
+      }
+
+      wasActive = active;
+      rafId = requestAnimationFrame(updateLoop);
+    }
+
+    function setupButtonImage() {
+      // Wenn buttonImg gesetzt und geladen: als Hintergrund nutzen
+      if (ASSETS.buttonImg && loaded.buttonImg) {
+        elBtn.classList.add("has-img");
+        elBtn.style.backgroundImage = `url("${ASSETS.buttonImg}")`;
+      } else {
+        elBtn.classList.remove("has-img");
+        elBtn.style.backgroundImage = "";
+      }
+    }
+
+    function bindEvents() {
+      // Pointer Events (Mobile + Desktop)
+      // Nicht "gedrückt halten": nur Klick/PointerUp zählt als Impuls
+      elBtn.addEventListener("pointerup", (e) => {
+        e.preventDefault();
+        onMassageImpulse();
+      }, { passive: false });
+
+      // Tastatur: Enter/Space als Impuls
+      elBtn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onMassageImpulse();
+        }
+      });
+
+      // Falls Pointerup nicht feuert (sehr selten), auch click akzeptieren
+      elBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        onMassageImpulse();
+      });
+    }
+
+    async function init() {
+      // Initialzustand
+      elHands.src = ""; // erst nach preload setzen
+      setState("angry", { active: false });
+      resetScore();
+
+      // Preload Assets
+      const results = await Promise.all([
+        preloadImage("bgAngry", ASSETS.bgAngry),
+        preloadImage("bgHappy", ASSETS.bgHappy),
+        preloadImage("hands", ASSETS.hands),
+        ASSETS.buttonImg ? preloadImage("buttonImg", ASSETS.buttonImg) : Promise.resolve({ ok: false, label: "buttonImg", path: "" })
+      ]);
+
+      for (const r of results) {
+        if (r.label in loaded) loaded[r.label] = !!r.ok;
+
+        if (!r.ok && r.path) {
+          showAssetError(r.label, r.path);
+        }
+      }
+
+      // Hände setzen, wenn verfügbar
+      if (loaded.hands) {
+        elHands.src = ASSETS.hands;
+      } else {
+        // Wenn nicht vorhanden: Image unsichtbar lassen (kein Crash)
+        elHands.removeAttribute("src");
+      }
+
+      setupButtonImage();
+      bindEvents();
+
+      // Start Loop
+      lastFrameTime = 0;
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(updateLoop);
+    }
+
+    // Kein Crash bei unerwarteten Fehlern
+    window.addEventListener("error", (e) => {
+      const msg = (e && e.message) ? e.message : "Unbekannter Fehler";
+      showAssetError("Script", msg);
+    });
+
+    init();
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+
+  </script>
+</body>
+</html>
+```
